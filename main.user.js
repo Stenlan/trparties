@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Typeracer Easier Parties
-// @namespace    com.github.stenlan.trparties
+// @namespace    http://tampermonkey.net/
 // @version      0.1
 // @description  Typeracer easier party joining
-// @author       stenlan
+// @author       ph0t0shop
 // @match        http://play.typeracer.com/*
 // @require      https://code.jquery.com/jquery-3.2.1.min.js
 // @grant        GM_xmlhttpRequest
@@ -13,6 +13,10 @@
 var jQuerd = jQuery.noConflict(true);
 var previouslyOnMain = false;
 var previouslyInRoom = false;
+var checkingMessages = false;
+var invitingFriends = false;
+var loadingInterval = null;
+var loadingRotation = 0;
 
 var zeInterval = setInterval(function(){
     if(jQuerd(".mainMenu").first().length !== 0){
@@ -38,13 +42,40 @@ var zeInterval = setInterval(function(){
 }, 200);
 
 function checkMessages(){
-    GM_xmlhttpRequest({
-        method: "GET",
-        url: "http://data.typeracer.com/pit/messages",
-        onload: function(data){
-            handleMessageCheck(jQuerd(jQuerd.parseHTML(data.responseText)).find(".unreadMessage").first().find(".messageBody").first().children().first().html().trim());
-        }
-    });
+    if(!checkingMessages){
+        checkingMessages = true;
+        var friendRefreshButton = jQuerd("#friendsRefreshButton");
+        var friendRefreshText = jQuerd("#friendsRefreshText");
+        var friendRefreshTd = jQuerd("#friendsRefreshTd");
+
+        friendRefreshText.html("Refreshing...");
+        friendRefreshButton.css("pointer-events", "none");
+        friendRefreshText.css("pointer-events", "none");
+        friendRefreshTd.css("pointer-events", "none");
+        friendRefreshButton.css("transform", "rotate(0deg)");
+        loadingInterval = setInterval(function(){
+            friendRefreshButton.css("transform", "rotate(" + loadingRotation + "deg)");
+            loadingRotation += 1.8;
+        }, 5);
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: "http://data.typeracer.com/pit/messages",
+            onload: function(data){
+                var newestMessage = jQuerd(jQuerd.parseHTML(data.responseText)).find(".unreadMessage").first().find(".messageBody").first().children().first().html();
+                newestMessage = newestMessage === undefined ? "" : newestMessage.trim();
+                handleMessageCheck(newestMessage);
+                clearInterval(loadingInterval);
+                friendRefreshButton.css("transform", "rotate(0deg)");
+                friendRefreshText.html("Refresh friend rooms");
+                friendRefreshButton.css("pointer-events", "auto");
+                friendRefreshText.css("pointer-events", "auto");
+                friendRefreshTd.css("pointer-events", "auto");
+                loadingRotation = 0;
+                checkingMessages = false;
+                console.log("success");
+            }
+        });
+    }
 }
 
 function createJoinFriendTr(joinUrl){
@@ -82,6 +113,7 @@ function addRefreshButton(){
 
         refreshTd.attr("align", "left");
         refreshTd.addClass("ImageButton");
+        refreshTd.attr("id", "friendsRefreshTd");
         refreshTd.click(function(){
             checkMessages();
         });
@@ -90,9 +122,12 @@ function addRefreshButton(){
         refreshButton.css("width", "32");
         refreshButton.css("height", "32");
         refreshButton.attr("src", "https://i.imgur.com/Okx1nQg.png");
+        refreshButton.attr("id", "friendsRefreshButton");
+
 
         var refreshText = jQuerd(document.createElement("SPAN"));
         refreshText.html("Refresh friend rooms");
+        refreshText.attr("id", "friendsRefreshText");
         refreshText.css("float","right");
         refreshText.css("margin-left","10px");
         refreshText.css("height","32px");
@@ -108,10 +143,12 @@ function addRefreshButton(){
 function addInviteFriendsButton(roomUrl){
     if(jQuerd(".roomSection").first().attr("invitefriendsbuttonadded") !== "true"){
         var invFriendsButton = jQuerd(jQuerd.parseHTML(jQuerd(".roomSection table:eq(0) tbody:eq(0) tr:eq(1) tbody tr:eq(0)").children().get(1).outerHTML));
+        invFriendsButton.find("img").first().attr("id", "invFriendsImg");
         invFriendsButton.find("img").first().click(function(){
             inviteFriends(roomUrl);
         });
         invFriendsButton.find("a").first().html("share with friends");
+        invFriendsButton.find("a").first().attr("id", "invFriendsText");
         invFriendsButton.find("a").first().click(function(){
             inviteFriends(roomUrl);
         });
@@ -129,32 +166,49 @@ function addInviteFriendsButton(roomUrl){
 }
 
 function inviteFriends(roomUrl){
-    GM_xmlhttpRequest({
-        method: "GET",
-        url: "http://data.typeracer.com/pit/friends",
-        onload: function(data){
-            var friendsList = [];
-            jQuerd(jQuerd.parseHTML(data.responseText)).find(".friendsTable:eq(0) tbody:eq(0) tr[height]").each(function(index, element){
-                friendsList.push(jQuerd(element).find("td:eq(1) a").html());
-            });
+    if(!invitingFriends){
+        invitingFriends = true;
+        var invFriendsText = jQuerd("#invFriendsText");
+        var invFriendsImg = jQuerd("#invFriendsImg");
 
-            friendsList.forEach(function(item, index){
-                GM_xmlhttpRequest({
-                    method: "POST",
-                    url: "http://data.typeracer.com/pit/message_compose",
-                    headers: {
-                        "Content-Type": "application/x-www-form-urlencoded"
-                    },
-                    data: "to=" + item + "&body=" + roomUrl + "+" + Date.now() + "&returnUrl=http%3A%2F%2Fdata.typeracer.com%2Fpit%2Fmessages",
-                    onload: function(data2){
-                        if(index === friendsList.length - 1){
-                            alert("Successfully invited all friends!");
-                        }
-                    }
+        invFriendsText.html("Inviting...");
+        invFriendsImg.css("cursor", "default");
+        invFriendsText.css("cursor", "default");
+        invFriendsImg.css({'pointer-events': 'none'});
+        invFriendsText.css({'pointer-events': 'none'});
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: "http://data.typeracer.com/pit/friends",
+            onload: function(data){
+                var friendsList = [];
+                jQuerd(jQuerd.parseHTML(data.responseText)).find(".friendsTable:eq(0) tbody:eq(0) tr[height]").each(function(index, element){
+                    friendsList.push(jQuerd(element).find("td:eq(1) a").html());
                 });
-            });
-        }
-    });
+
+                friendsList.forEach(function(item, index){
+                    GM_xmlhttpRequest({
+                        method: "POST",
+                        url: "http://data.typeracer.com/pit/message_compose",
+                        headers: {
+                            "Content-Type": "application/x-www-form-urlencoded"
+                        },
+                        data: "to=" + item + "&body=" + roomUrl + "+" + Date.now() + "&returnUrl=http%3A%2F%2Fdata.typeracer.com%2Fpit%2Fmessages",
+                        onload: function(data2){
+                            if(index === friendsList.length - 1){
+                                invFriendsText.html("share with friends");
+                                invFriendsImg.css("cursor", "pointer");
+                                invFriendsText.css("cursor", "pointer");
+                                invFriendsImg.css({'pointer-events': 'auto'});
+                                invFriendsText.css({'pointer-events': 'auto'});
+                                invitingFriends = false;
+                                alert("Successfully invited all friends!");
+                            }
+                        }
+                    });
+                });
+            }
+        });
+    }
 }
 
 function handleMessageCheck(message){
