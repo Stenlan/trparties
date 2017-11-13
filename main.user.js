@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Typeracer Easier Parties
-// @namespace    http://tampermonkey.net/
-// @version      0.1
+// @namespace    com.github.stenlan.trparties
+// @version      0.2
 // @description  Typeracer easier party joining
-// @author       ph0t0shop
+// @author       stenlan
 // @match        http://play.typeracer.com/*
 // @require      https://code.jquery.com/jquery-3.2.1.min.js
 // @grant        GM_xmlhttpRequest
